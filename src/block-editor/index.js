@@ -76,7 +76,11 @@ const SuperSwankFeaturedImagePanel = () => {
                                 onClick={open}
                                 variant="secondary"
                                 className="editor-post-featured-image__toggle"
-                                style={{ width: '100%', marginBottom: defaultImage ? '0.5em' : 0 }}
+                                style={{ 
+                                    width: '100%', 
+                                    marginBottom: defaultImage ? '0.5em' : 0,
+                                    textAlign: 'center'
+                                }}
                             >
                                 {defaultImage
                                     ? __('Replace Image', 'super-swank-featured-image')
