@@ -1,0 +1,13 @@
+{
+    "name": "super-swank-featured-image",
+    "version": "1.0.0",
+    "description": "WordPress plugin for setting default featured images",
+    "scripts": {
+        "build": "wp-scripts build",
+        "start": "wp-scripts start",
+        "packages-update": "wp-scripts packages-update"
+    },
+    "devDependencies": {
+        "@wordpress/scripts": "^26.0.0"
+    }
+} 
