@@ -4,7 +4,7 @@ import { Button, PanelBody } from '@wordpress/components';
 import { useSelect, useDispatch } from '@wordpress/data';
 import { useState, useEffect } from '@wordpress/element';
 import { registerPlugin } from '@wordpress/plugins';
-import { PluginSidebar } from '@wordpress/edit-site';
+import { PluginSidebar } from '@wordpress/editor';
 
 const SuperSwankFeaturedImagePanel = () => {
     const [defaultImage, setDefaultImage] = useState(0);
