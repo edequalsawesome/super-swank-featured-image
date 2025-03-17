@@ -85,6 +85,12 @@ class Super_Swank_Featured_Image {
         // Add image editing support
         add_filter( 'admin_post_thumbnail_html', array( $this, 'add_image_editing_button' ), 10, 3 );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_image_editing_scripts' ) );
+
+        // Add hook for crop position changes
+        add_action( 'update_option_ssfi_crop_positions', array( $this, 'regenerate_images_on_crop_change' ), 10, 2 );
+
+        // Register REST API endpoints
+        add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
     }
 
     /**
@@ -117,9 +123,9 @@ class Super_Swank_Featured_Image {
      * @return void
      */
     public function register_settings(): void {
-        // Register the setting
+        // Register settings in the site editor group
         register_setting(
-            'theme',
+            'site-editor',
             'ssfi_default_image',
             array(
                 'type'              => 'integer',
@@ -127,6 +133,58 @@ class Super_Swank_Featured_Image {
                 'sanitize_callback' => 'absint',
                 'show_in_rest'     => true,
                 'default'          => 0,
+                'single'           => true
+            )
+        );
+
+        register_setting(
+            'site-editor',
+            'ssfi_crop_positions',
+            array(
+                'type' => 'object',
+                'description' => __('Crop positions for social media images', 'super-swank-featured-image'),
+                'show_in_rest' => array(
+                    'schema' => array(
+                        'type' => 'object',
+                        'properties' => array(
+                            'facebook' => array(
+                                'type' => 'object',
+                                'properties' => array(
+                                    'x' => array('type' => 'string'),
+                                    'y' => array('type' => 'string')
+                                )
+                            ),
+                            'twitter' => array(
+                                'type' => 'object',
+                                'properties' => array(
+                                    'x' => array('type' => 'string'),
+                                    'y' => array('type' => 'string')
+                                )
+                            ),
+                            'instagram' => array(
+                                'type' => 'object',
+                                'properties' => array(
+                                    'x' => array('type' => 'string'),
+                                    'y' => array('type' => 'string')
+                                )
+                            ),
+                            'pinterest' => array(
+                                'type' => 'object',
+                                'properties' => array(
+                                    'x' => array('type' => 'string'),
+                                    'y' => array('type' => 'string')
+                                )
+                            )
+                        )
+                    )
+                ),
+                'default' => array(
+                    'facebook' => array('x' => 'center', 'y' => 'center'),
+                    'twitter' => array('x' => 'center', 'y' => 'center'),
+                    'instagram' => array('x' => 'center', 'y' => 'center'),
+                    'pinterest' => array('x' => 'center', 'y' => 'center')
+                ),
+                'single' => true
             )
         );
 
@@ -137,7 +195,8 @@ class Super_Swank_Featured_Image {
                 'settings' => array(
                     'custom' => array(
                         'ssfi' => array(
-                            'defaultImage' => get_option('ssfi_default_image', 0)
+                            'defaultImage' => get_option('ssfi_default_image', 0),
+                            'cropPositions' => get_option('ssfi_crop_positions', array())
                         )
                     )
                 )
@@ -163,7 +222,8 @@ class Super_Swank_Featured_Image {
                         'wp-plugins',
                         'wp-edit-site',
                         'wp-block-editor',
-                        'wp-media-utils'
+                        'wp-media-utils',
+                        'wp-api-fetch'
                     )
                 ),
                 $asset_file['version']
@@ -180,6 +240,9 @@ class Super_Swank_Featured_Image {
                 'ssfiSettings',
                 array(
                     'defaultImage' => get_option('ssfi_default_image', 0),
+                    'cropPositions' => get_option('ssfi_crop_positions', array()),
+                    'restUrl' => rest_url(),
+                    'restNonce' => wp_create_nonce('wp_rest')
                 )
             );
         });
@@ -196,7 +259,7 @@ class Super_Swank_Featured_Image {
             'ssfi-facebook',
             SSFI_FB_WIDTH,
             SSFI_FB_HEIGHT,
-            true
+            array('center', 'center') // Default to center crop
         );
 
         // Twitter
@@ -204,7 +267,7 @@ class Super_Swank_Featured_Image {
             'ssfi-twitter',
             SSFI_TWITTER_WIDTH,
             SSFI_TWITTER_HEIGHT,
-            true
+            array('center', 'center') // Default to center crop
         );
 
         // Instagram
@@ -212,7 +275,7 @@ class Super_Swank_Featured_Image {
             'ssfi-instagram',
             SSFI_INSTAGRAM_SIZE,
             SSFI_INSTAGRAM_SIZE,
-            true
+            array('center', 'center') // Default to center crop
         );
 
         // Pinterest
@@ -220,8 +283,119 @@ class Super_Swank_Featured_Image {
             'ssfi-pinterest',
             SSFI_PINTEREST_WIDTH,
             SSFI_PINTEREST_HEIGHT,
-            true
+            array('center', 'center') // Default to center crop
         );
+
+        // Register settings for crop positions
+        register_setting(
+            'media',
+            'ssfi_crop_positions',
+            array(
+                'type' => 'object',
+                'description' => __('Crop positions for social media images', 'super-swank-featured-image'),
+                'show_in_rest' => true,
+                'default' => array(
+                    'facebook' => array('x' => 'center', 'y' => 'center'),
+                    'twitter' => array('x' => 'center', 'y' => 'center'),
+                    'instagram' => array('x' => 'center', 'y' => 'center'),
+                    'pinterest' => array('x' => 'center', 'y' => 'center')
+                )
+            )
+        );
+
+        // Add filter to customize crop position
+        add_filter('image_resize_dimensions', array($this, 'customize_crop_position'), 10, 6);
+    }
+
+    /**
+     * Customize crop position based on settings.
+     *
+     * @param array|false $payload    Array of parameters or false.
+     * @param int        $orig_w     Original width.
+     * @param int        $orig_h     Original height.
+     * @param int        $dest_w     Destination width.
+     * @param int        $dest_h     Destination height.
+     * @param bool       $crop       Whether to crop or not.
+     * @return array|false           Modified payload or false.
+     */
+    public function customize_crop_position($payload, $orig_w, $orig_h, $dest_w, $dest_h, $crop): array|false {
+        if (!$crop) {
+            return $payload;
+        }
+
+        // Get the current image size being processed
+        $current_size = null;
+        $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 10);
+        foreach ($backtrace as $trace) {
+            if (isset($trace['function']) && $trace['function'] === 'image_make_intermediate_size') {
+                $file = basename($trace['args'][0]);
+                if (strpos($file, 'ssfi-') !== false) {
+                    $current_size = str_replace('ssfi-', '', pathinfo($file, PATHINFO_FILENAME));
+                    break;
+                }
+            }
+        }
+
+        if (!$current_size) {
+            return $payload;
+        }
+
+        // Get crop positions from settings
+        $crop_positions = get_option('ssfi_crop_positions', array());
+        if (!isset($crop_positions[$current_size])) {
+            return $payload;
+        }
+
+        $pos_x = $crop_positions[$current_size]['x'];
+        $pos_y = $crop_positions[$current_size]['y'];
+
+        // Calculate crop position
+        $src_x = 0;
+        $src_y = 0;
+
+        // Calculate x position
+        if ($orig_w > $dest_w) {
+            $excess_width = $orig_w - $dest_w;
+            switch ($pos_x) {
+                case 'left':
+                    $src_x = 0;
+                    break;
+                case 'right':
+                    $src_x = $excess_width;
+                    break;
+                default: // center
+                    $src_x = round($excess_width / 2);
+            }
+        }
+
+        // Calculate y position
+        if ($orig_h > $dest_h) {
+            $excess_height = $orig_h - $dest_h;
+            switch ($pos_y) {
+                case 'top':
+                    $src_y = 0;
+                    break;
+                case 'bottom':
+                    $src_y = $excess_height;
+                    break;
+                default: // center
+                    $src_y = round($excess_height / 2);
+            }
+        }
+
+        // Return modified dimensions
+        return array(0, 0, $src_x, $src_y, $dest_w, $dest_h, $orig_w, $orig_h);
+    }
+
+    /**
+     * Get the crop position for a platform.
+     *
+     * @param string $platform The social media platform.
+     * @return array The crop position array with 'x' and 'y' keys.
+     */
+    private function get_crop_position(string $platform): array {
+        $crop_positions = get_option('ssfi_crop_positions', array());
+        return $crop_positions[$platform] ?? array('x' => 'center', 'y' => 'center');
     }
 
     /**
@@ -379,6 +553,176 @@ class Super_Swank_Featured_Image {
             }
         }
         return $image_url;
+    }
+
+    /**
+     * Regenerate images when crop positions change.
+     *
+     * @param array $old_value The old crop positions.
+     * @param array $new_value The new crop positions.
+     * @return void
+     */
+    public function regenerate_images_on_crop_change(array $old_value, array $new_value): void {
+        // Get all attachment IDs that have our custom image sizes
+        global $wpdb;
+        $meta_key = '_wp_attachment_metadata';
+        
+        $attachments = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT post_id FROM {$wpdb->postmeta} 
+                WHERE meta_key = %s 
+                AND meta_value LIKE %s",
+                $meta_key,
+                '%ssfi-%'
+            )
+        );
+
+        if (empty($attachments)) {
+            return;
+        }
+
+        // For each attachment, regenerate our custom sizes
+        foreach ($attachments as $attachment_id) {
+            $this->regenerate_attachment_sizes($attachment_id);
+        }
+    }
+
+    /**
+     * Regenerate custom image sizes for an attachment.
+     *
+     * @param int $attachment_id The attachment ID.
+     * @return void
+     */
+    private function regenerate_attachment_sizes(int $attachment_id): void {
+        $metadata = wp_get_attachment_metadata($attachment_id);
+        
+        if (!isset($metadata['file'])) {
+            return;
+        }
+
+        $file = get_attached_file($attachment_id);
+        
+        if (!file_exists($file)) {
+            return;
+        }
+
+        // Get the original image size
+        $size = @getimagesize($file);
+        if (!$size) {
+            return;
+        }
+
+        list($orig_w, $orig_h) = $size;
+
+        // Define our custom sizes
+        $sizes = array(
+            'ssfi-facebook' => array(SSFI_FB_WIDTH, SSFI_FB_HEIGHT),
+            'ssfi-twitter' => array(SSFI_TWITTER_WIDTH, SSFI_TWITTER_HEIGHT),
+            'ssfi-instagram' => array(SSFI_INSTAGRAM_SIZE, SSFI_INSTAGRAM_SIZE),
+            'ssfi-pinterest' => array(SSFI_PINTEREST_WIDTH, SSFI_PINTEREST_HEIGHT)
+        );
+
+        // Remove old sized images
+        foreach ($sizes as $size_name => $dimensions) {
+            if (isset($metadata['sizes'][$size_name])) {
+                $file_path = path_join(dirname($file), $metadata['sizes'][$size_name]['file']);
+                if (file_exists($file_path)) {
+                    @unlink($file_path);
+                }
+                unset($metadata['sizes'][$size_name]);
+            }
+        }
+
+        // Generate new images
+        if (function_exists('wp_get_image_editor')) {
+            $editor = wp_get_image_editor($file);
+            
+            if (!is_wp_error($editor)) {
+                foreach ($sizes as $size_name => $dimensions) {
+                    list($width, $height) = $dimensions;
+                    $editor->resize($width, $height, true);
+                    $resized = $editor->save();
+                    
+                    if (!is_wp_error($resized)) {
+                        $metadata['sizes'][$size_name] = array(
+                            'file' => basename($resized['path']),
+                            'width' => $resized['width'],
+                            'height' => $resized['height'],
+                            'mime-type' => $resized['mime-type']
+                        );
+                    }
+                    
+                    // Reset the image to original for next resize
+                    $editor = wp_get_image_editor($file);
+                }
+            }
+        }
+
+        // Update attachment metadata
+        wp_update_attachment_metadata($attachment_id, $metadata);
+    }
+
+    /**
+     * Register REST API routes.
+     *
+     * @return void
+     */
+    public function register_rest_routes(): void {
+        register_rest_route(
+            'wp/v2/ssfi',
+            '/regenerate-crops',
+            array(
+                'methods' => 'POST',
+                'callback' => array($this, 'handle_regenerate_crops'),
+                'permission_callback' => function() {
+                    return current_user_can('edit_theme_options');
+                }
+            )
+        );
+    }
+
+    /**
+     * Handle the regenerate crops REST API request.
+     *
+     * @param WP_REST_Request $request The request object.
+     * @return WP_REST_Response|WP_Error The response object.
+     */
+    public function handle_regenerate_crops($request) {
+        // Get all attachment IDs that have our custom image sizes
+        global $wpdb;
+        $meta_key = '_wp_attachment_metadata';
+        
+        $attachments = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT post_id FROM {$wpdb->postmeta} 
+                WHERE meta_key = %s 
+                AND meta_value LIKE %s",
+                $meta_key,
+                '%ssfi-%'
+            )
+        );
+
+        if (empty($attachments)) {
+            return rest_ensure_response(array(
+                'success' => true,
+                'message' => __('No images to regenerate.', 'super-swank-featured-image')
+            ));
+        }
+
+        $regenerated = 0;
+        foreach ($attachments as $attachment_id) {
+            $this->regenerate_attachment_sizes($attachment_id);
+            $regenerated++;
+        }
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'message' => sprintf(
+                /* translators: %d: number of images regenerated */
+                __('Successfully regenerated crops for %d images.', 'super-swank-featured-image'),
+                $regenerated
+            )
+        ));
     }
 }
 

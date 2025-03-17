@@ -10,6 +10,7 @@ Super-Swank Featured Image allows you to set a default featured image that will 
 
 - Set a default featured image for all content types
 - Support for both classic and block editor
+- Customizable crop positions for each social media platform
 - Image cropping functionality with customizable aspect ratio
 - Responsive admin interface
 - Translation-ready
@@ -31,8 +32,37 @@ Super-Swank Featured Image allows you to set a default featured image that will 
 
 1. Go to Settings > Default Featured Image
 2. Click "Select Image" to choose your default featured image
-3. Optionally crop the image to your desired dimensions
+3. For each social media platform (Facebook/LinkedIn, Twitter, Instagram, Pinterest):
+   - Choose the horizontal crop position (Left, Center, Right)
+   - Choose the vertical crop position (Top, Center, Bottom)
 4. Save changes
+
+The plugin will automatically generate appropriately cropped versions of your image for each social media platform based on your selected crop positions. When you change a crop position, all affected images will be automatically regenerated with the new crop settings.
+
+### Image Dimensions
+
+The plugin generates images in the following dimensions:
+
+- Facebook/LinkedIn: 1200×630 pixels
+- Twitter: 1200×600 pixels
+- Instagram: 1080×1080 pixels
+- Pinterest: 1000×1500 pixels
+
+### Crop Positions
+
+For each social media platform, you can choose:
+
+**Horizontal Position:**
+- Left: Crops from the left edge
+- Center: Crops from the horizontal center (default)
+- Right: Crops from the right edge
+
+**Vertical Position:**
+- Top: Crops from the top edge
+- Center: Crops from the vertical center (default)
+- Bottom: Crops from the bottom edge
+
+This is particularly useful when your original image has different aspect ratios than the social media platforms require, allowing you to control which part of the image is preserved during cropping.
 
 ## Usage
 
