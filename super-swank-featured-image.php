@@ -180,17 +180,25 @@ class Super_Swank_Featured_Image {
      */
     public function enqueue_admin_scripts( string $hook ): void {
         // For block themes, enqueue the block editor script
-        if ( wp_is_block_theme() && function_exists( 'get_current_screen' ) ) {
-            $screen = get_current_screen();
-            if ( $screen && $screen->is_block_editor() ) {
+        if ( wp_is_block_theme() ) {
+            add_action('enqueue_block_editor_assets', function() {
                 wp_enqueue_script(
                     'ssfi-block-editor',
                     SSFI_PLUGIN_URL . 'assets/js/block-editor.js',
-                    array( 'wp-blocks', 'wp-i18n', 'wp-element', 'wp-editor', 'wp-components', 'wp-data', 'wp-plugins', 'wp-edit-site' ),
+                    array(
+                        'wp-blocks',
+                        'wp-i18n',
+                        'wp-element',
+                        'wp-components',
+                        'wp-data',
+                        'wp-plugins',
+                        'wp-edit-post',
+                        'wp-media-utils'
+                    ),
                     SSFI_VERSION,
                     true
                 );
-            }
+            });
         }
 
         // For classic themes, enqueue the admin scripts
