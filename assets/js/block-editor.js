@@ -1,10 +1,9 @@
 ( function( wp ) {
     const { __ } = wp.i18n;
     const { MediaUpload, MediaUploadCheck } = wp.blockEditor;
-    const { Button, Panel, PanelBody } = wp.components;
+    const { Button, PanelRow, TextControl } = wp.components;
     const { useSelect, useDispatch } = wp.data;
     const { useState, useEffect } = wp.element;
-    const { PluginSidebar, PluginSidebarMoreMenuItem } = wp.editPost;
     const { registerPlugin } = wp.plugins;
 
     const SuperSwankFeaturedImageSettings = () => {
@@ -49,81 +48,80 @@
         };
 
         return (
-            <>
-                <PluginSidebarMoreMenuItem
-                    target="ssfi-sidebar"
-                >
-                    { __('Default Featured Image', 'super-swank-featured-image') }
-                </PluginSidebarMoreMenuItem>
-                <PluginSidebar
-                    name="ssfi-sidebar"
-                    title={ __('Default Featured Image', 'super-swank-featured-image') }
-                    icon="format-image"
-                >
-                    <Panel>
-                        <PanelBody
-                            title={ __('Settings', 'super-swank-featured-image') }
-                            initialOpen={ true }
-                        >
-                            <div className="ssfi-sidebar-content">
-                                <MediaUploadCheck>
-                                    <MediaUpload
-                                        onSelect={ onSelectImage }
-                                        allowedTypes={ ['image'] }
-                                        value={ defaultImage }
-                                        render={ ({ open }) => (
-                                            <div style={{ marginBottom: '1em' }}>
-                                                { defaultImage && imageUrl ? (
-                                                    <div>
-                                                        <img 
-                                                            src={ imageUrl }
-                                                            alt=""
-                                                            style={{ 
-                                                                maxWidth: '100%',
-                                                                marginBottom: '1em',
-                                                                display: 'block'
-                                                            }}
-                                                        />
-                                                        <div style={{ marginBottom: '1em' }}>
-                                                            <Button
-                                                                onClick={ open }
-                                                                variant="secondary"
-                                                                style={{ marginRight: '0.5em' }}
-                                                            >
-                                                                { __('Replace Image', 'super-swank-featured-image') }
-                                                            </Button>
-                                                            <Button 
-                                                                onClick={ removeImage }
-                                                                variant="secondary"
-                                                                isDestructive
-                                                            >
-                                                                { __('Remove Image', 'super-swank-featured-image') }
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
+            <PanelRow>
+                <div className="ssfi-settings-content" style={{ width: '100%' }}>
+                    <TextControl
+                        label={__('Default Featured Image', 'super-swank-featured-image')}
+                        help={__('This image will be used when no featured image is set for a post or page.', 'super-swank-featured-image')}
+                    />
+                    <div style={{ marginTop: '1em' }}>
+                        <MediaUploadCheck>
+                            <MediaUpload
+                                onSelect={onSelectImage}
+                                allowedTypes={['image']}
+                                value={defaultImage}
+                                render={({ open }) => (
+                                    <div style={{ marginBottom: '1em' }}>
+                                        {defaultImage && imageUrl ? (
+                                            <div>
+                                                <img
+                                                    src={imageUrl}
+                                                    alt=""
+                                                    style={{
+                                                        maxWidth: '100%',
+                                                        marginBottom: '1em',
+                                                        display: 'block'
+                                                    }}
+                                                />
+                                                <div style={{ marginBottom: '1em' }}>
                                                     <Button
-                                                        onClick={ open }
-                                                        variant="primary"
-                                                        className="editor-post-featured-image__toggle"
+                                                        onClick={open}
+                                                        variant="secondary"
+                                                        style={{ marginRight: '0.5em' }}
                                                     >
-                                                        { __('Select Default Image', 'super-swank-featured-image') }
+                                                        {__('Replace Image', 'super-swank-featured-image')}
                                                     </Button>
-                                                ) }
+                                                    <Button
+                                                        onClick={removeImage}
+                                                        variant="secondary"
+                                                        isDestructive
+                                                    >
+                                                        {__('Remove Image', 'super-swank-featured-image')}
+                                                    </Button>
+                                                </div>
                                             </div>
+                                        ) : (
+                                            <Button
+                                                onClick={open}
+                                                variant="primary"
+                                                className="editor-post-featured-image__toggle"
+                                            >
+                                                {__('Select Default Image', 'super-swank-featured-image')}
+                                            </Button>
                                         )}
-                                    />
-                                </MediaUploadCheck>
-                            </div>
-                        </PanelBody>
-                    </Panel>
-                </PluginSidebar>
-            </>
+                                    </div>
+                                )}
+                            />
+                        </MediaUploadCheck>
+                    </div>
+                </div>
+            </PanelRow>
         );
     };
 
-    registerPlugin( 'super-swank-featured-image', {
-        render: SuperSwankFeaturedImageSettings,
-        icon: 'format-image'
-    } );
+    if (wp.customize) {
+        wp.customize.sectionConstructor['super-swank-featured-image'] = wp.customize.Section.extend({
+            template: wp.template('super-swank-featured-image-section')
+        });
+    }
+
+    wp.domReady(() => {
+        const settings = document.querySelector('.edit-site-global-styles-sidebar');
+        if (settings) {
+            const section = document.createElement('div');
+            section.className = 'edit-site-global-styles-section super-swank-featured-image-section';
+            wp.element.render(<SuperSwankFeaturedImageSettings />, section);
+            settings.appendChild(section);
+        }
+    });
 } )( window.wp ); 

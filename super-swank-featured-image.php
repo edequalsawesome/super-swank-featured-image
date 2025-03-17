@@ -119,8 +119,13 @@ class Super_Swank_Featured_Image {
      * @return void
      */
     public function register_block_settings(): void {
+        if ( ! wp_is_block_theme() ) {
+            return;
+        }
+
+        // Register the setting
         register_setting(
-            'ssfi_block_options',
+            'theme',
             'ssfi_default_image',
             array(
                 'type'              => 'integer',
@@ -131,27 +136,57 @@ class Super_Swank_Featured_Image {
             )
         );
 
-        // Register settings for block themes
-        if ( wp_is_block_theme() ) {
-            register_setting(
-                'theme',
-                'ssfi_default_image',
-                array(
-                    'type'              => 'integer',
-                    'description'       => __( 'Default featured image ID', 'super-swank-featured-image' ),
-                    'sanitize_callback' => 'absint',
-                    'show_in_rest'     => true,
-                    'default'          => 0,
+        // Add settings to theme.json
+        add_filter('wp_theme_json_data_theme', function($theme_json) {
+            $new_data = array(
+                'version'  => 2,
+                'settings' => array(
+                    'custom' => array(
+                        'ssfi' => array(
+                            'defaultImage' => get_option('ssfi_default_image', 0)
+                        )
+                    )
                 )
             );
-        }
+            return $theme_json->update_with($new_data);
+        });
 
-        // Add settings to theme.json
-        add_filter('block_editor_settings_all', function($settings) {
-            $settings['__experimentalFeatures']['custom']['ssfi'] = array(
-                'defaultImage' => get_option('ssfi_default_image', 0)
+        // Add the settings to the Site Editor
+        add_action('enqueue_block_editor_assets', function() {
+            if ( ! wp_is_block_theme() || ! function_exists( 'get_current_screen' ) ) {
+                return;
+            }
+
+            $screen = get_current_screen();
+            if ( ! $screen || ! $screen->is_block_editor() ) {
+                return;
+            }
+
+            wp_enqueue_script(
+                'ssfi-block-editor',
+                SSFI_PLUGIN_URL . 'assets/js/block-editor.js',
+                array(
+                    'wp-blocks',
+                    'wp-i18n',
+                    'wp-element',
+                    'wp-components',
+                    'wp-data',
+                    'wp-plugins',
+                    'wp-edit-site',
+                    'wp-block-editor',
+                    'wp-media-utils'
+                ),
+                SSFI_VERSION,
+                true
             );
-            return $settings;
+
+            wp_localize_script(
+                'ssfi-block-editor',
+                'ssfiSettings',
+                array(
+                    'defaultImage' => get_option('ssfi_default_image', 0),
+                )
+            );
         });
     }
 
