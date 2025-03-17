@@ -5,7 +5,7 @@
  * Description: Sets a default featured image for posts, pages, and custom post types when no featured image is set.
  * Version: 1.0.0
  * Requires at least: 5.9
- * Requires PHP: 8.2
+ * Requires PHP: 8.1
  * Author: eD! Thomas
  * Author URI: https://edequalsaweso.me
  * License: GPL v3
@@ -27,6 +27,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 define( 'SSFI_VERSION', '1.0.0' );
 define( 'SSFI_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SSFI_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
+
+// Define image size constants
+define( 'SSFI_FB_WIDTH', 1200 );
+define( 'SSFI_FB_HEIGHT', 630 );
+define( 'SSFI_TWITTER_WIDTH', 1200 );
+define( 'SSFI_TWITTER_HEIGHT', 600 );
+define( 'SSFI_INSTAGRAM_SIZE', 1080 );
+define( 'SSFI_PINTEREST_WIDTH', 1000 );
+define( 'SSFI_PINTEREST_HEIGHT', 1500 );
 
 // Main plugin class
 class Super_Swank_Featured_Image {
@@ -61,7 +70,26 @@ class Super_Swank_Featured_Image {
 
         add_action( 'init', array( $this, 'load_textdomain' ) );
         add_action( 'init', array( $this, 'register_settings' ) );
+        add_action( 'init', array( $this, 'register_image_sizes' ) );
         add_filter( 'get_post_thumbnail_id', array( $this, 'set_default_thumbnail' ), 10, 2 );
+        
+        // Add social media meta tag hooks
+        add_action( 'wp_head', array( $this, 'add_social_meta_tags' ), 5 );
+        
+        // SEO Plugin compatibility
+        add_filter( 'wpseo_opengraph_image', array( $this, 'maybe_set_social_image' ) ); // Yoast SEO compatibility
+        add_filter( 'wpseo_twitter_image', array( $this, 'maybe_set_social_image' ) ); // Yoast SEO compatibility
+        add_filter( 'rank_math/opengraph/image', array( $this, 'maybe_set_social_image' ) ); // Rank Math SEO compatibility
+        add_filter( 'rank_math/twitter/image', array( $this, 'maybe_set_social_image' ) ); // Rank Math SEO compatibility
+        
+        // Jetpack compatibility
+        add_filter( 'jetpack_open_graph_image_default', array( $this, 'maybe_set_jetpack_default_image' ) );
+        add_filter( 'jetpack_images_get_images', array( $this, 'maybe_add_default_to_jetpack_images' ), 10, 3 );
+        add_filter( 'jetpack_sharing_twitter_image', array( $this, 'maybe_set_social_image' ) );
+
+        // Add image editing support
+        add_filter( 'admin_post_thumbnail_html', array( $this, 'add_image_editing_button' ), 10, 3 );
+        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_image_editing_scripts' ) );
     }
 
     /**
@@ -163,6 +191,95 @@ class Super_Swank_Featured_Image {
     }
 
     /**
+     * Register custom image sizes.
+     *
+     * @return void
+     */
+    public function register_image_sizes(): void {
+        // Facebook/LinkedIn
+        add_image_size(
+            'ssfi-facebook',
+            SSFI_FB_WIDTH,
+            SSFI_FB_HEIGHT,
+            true
+        );
+
+        // Twitter
+        add_image_size(
+            'ssfi-twitter',
+            SSFI_TWITTER_WIDTH,
+            SSFI_TWITTER_HEIGHT,
+            true
+        );
+
+        // Instagram
+        add_image_size(
+            'ssfi-instagram',
+            SSFI_INSTAGRAM_SIZE,
+            SSFI_INSTAGRAM_SIZE,
+            true
+        );
+
+        // Pinterest
+        add_image_size(
+            'ssfi-pinterest',
+            SSFI_PINTEREST_WIDTH,
+            SSFI_PINTEREST_HEIGHT,
+            true
+        );
+    }
+
+    /**
+     * Add image editing button to featured image meta box.
+     *
+     * @param string $content The featured image meta box content.
+     * @param int    $post_id The post ID.
+     * @param int    $thumbnail_id The thumbnail ID.
+     * @return string
+     */
+    public function add_image_editing_button( string $content, int $post_id, ?int $thumbnail_id ): string {
+        if ( $thumbnail_id ) {
+            $platforms = array(
+                'facebook' => __('Facebook/LinkedIn', 'super-swank-featured-image'),
+                'twitter' => __('Twitter', 'super-swank-featured-image'),
+                'instagram' => __('Instagram', 'super-swank-featured-image'),
+                'pinterest' => __('Pinterest', 'super-swank-featured-image')
+            );
+
+            $content .= '<div class="ssfi-crop-buttons">';
+            $content .= '<p class="ssfi-crop-buttons-label">' . esc_html__('Edit Social Media Crops:', 'super-swank-featured-image') . '</p>';
+            
+            foreach ($platforms as $platform => $label) {
+                $edit_url = get_edit_post_link($thumbnail_id);
+                $button = sprintf(
+                    '<a href="%s" class="button" style="margin-right: 5px; margin-bottom: 5px;">%s</a>',
+                    esc_url(add_query_arg(array(
+                        'context' => 'ssfi-' . $platform,
+                        'return_url' => urlencode(get_edit_post_link($post_id)),
+                    ), $edit_url)),
+                    esc_html($label)
+                );
+                $content .= $button;
+            }
+            
+            $content .= '</div>';
+        }
+        return $content;
+    }
+
+    /**
+     * Enqueue scripts for image editing.
+     *
+     * @return void
+     */
+    public function enqueue_image_editing_scripts(): void {
+        $screen = get_current_screen();
+        if ( $screen && in_array( $screen->base, array( 'post', 'post-new' ), true ) ) {
+            wp_enqueue_media();
+        }
+    }
+
+    /**
      * Set default thumbnail if none is set.
      *
      * @param int|null $thumbnail_id The post thumbnail ID or null.
@@ -177,6 +294,137 @@ class Super_Swank_Featured_Image {
             }
         }
         return $thumbnail_id;
+    }
+
+    /**
+     * Get the appropriate image URL for social media.
+     *
+     * @param string $platform The social media platform ('facebook', 'twitter', 'instagram', 'pinterest').
+     * @return string|null The URL of the image to use, or null if no image is available.
+     */
+    private function get_social_image_url(string $platform = 'facebook'): ?string {
+        $image_id = null;
+        $default_image_id = (int) get_option('ssfi_default_image', 0);
+        
+        // Handle front page
+        if (is_front_page()) {
+            if (is_page()) {
+                $image_id = get_post_thumbnail_id(get_option('page_on_front'));
+            }
+            if (!$image_id && $default_image_id) {
+                $image_id = $default_image_id;
+            }
+        } else {
+            // Handle all other pages
+            $image_id = get_post_thumbnail_id();
+            if (!$image_id && $default_image_id) {
+                $image_id = $default_image_id;
+            }
+        }
+
+        if ($image_id) {
+            // Try to get the platform-specific cropped version
+            $image = wp_get_attachment_image_src($image_id, 'ssfi-' . $platform);
+            
+            // Fall back to full size if cropped version doesn't exist
+            if (!$image) {
+                $image = wp_get_attachment_image_src($image_id, 'full');
+            }
+            
+            return $image ? $image[0] : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Add social media meta tags to the head.
+     *
+     * @return void
+     */
+    public function add_social_meta_tags(): void {
+        // Don't add tags if a SEO plugin or Jetpack's OpenGraph is active
+        if (defined('WPSEO_VERSION') || defined('RANK_MATH_VERSION') || class_exists('Jetpack') && Jetpack::is_module_active('publicize')) {
+            return;
+        }
+
+        // Facebook/LinkedIn image
+        $fb_image_url = $this->get_social_image_url('facebook');
+        if ($fb_image_url) {
+            echo '<meta property="og:image" content="' . esc_url($fb_image_url) . '" />' . "\n";
+            echo '<meta property="og:image:width" content="' . esc_attr(SSFI_FB_WIDTH) . '" />' . "\n";
+            echo '<meta property="og:image:height" content="' . esc_attr(SSFI_FB_HEIGHT) . '" />' . "\n";
+        }
+
+        // Twitter image
+        $twitter_image_url = $this->get_social_image_url('twitter');
+        if ($twitter_image_url) {
+            echo '<meta name="twitter:card" content="summary_large_image" />' . "\n";
+            echo '<meta name="twitter:image" content="' . esc_url($twitter_image_url) . '" />' . "\n";
+        }
+
+        // Pinterest image (optional, as Pinterest can use og:image)
+        $pinterest_image_url = $this->get_social_image_url('pinterest');
+        if ($pinterest_image_url && $pinterest_image_url !== $fb_image_url) {
+            echo '<meta property="og:image:pinterest" content="' . esc_url($pinterest_image_url) . '" />' . "\n";
+        }
+    }
+
+    /**
+     * Filter callback for SEO plugins to set social image.
+     *
+     * @param string $image_url The current image URL.
+     * @param string $platform The platform requesting the image ('facebook', 'twitter', etc.).
+     * @return string The filtered image URL.
+     */
+    public function maybe_set_social_image(string $image_url, string $platform = 'facebook'): string {
+        if (empty($image_url)) {
+            $new_image_url = $this->get_social_image_url($platform);
+            if ($new_image_url) {
+                return $new_image_url;
+            }
+        }
+        return $image_url;
+    }
+
+    /**
+     * Set default image for Jetpack's OpenGraph implementation.
+     *
+     * @param string $image_url The default image URL.
+     * @return string The filtered image URL.
+     */
+    public function maybe_set_jetpack_default_image(string $image_url): string {
+        $new_image_url = $this->get_social_image_url('facebook');
+        return $new_image_url ?: $image_url;
+    }
+
+    /**
+     * Add default image to Jetpack's image detection results.
+     *
+     * @param array $images Array of images found by Jetpack.
+     * @param int $post_id Post ID.
+     * @param array $args Array of arguments.
+     * @return array Modified array of images.
+     */
+    public function maybe_add_default_to_jetpack_images(array $images, int $post_id, array $args): array {
+        // If no images were found and we have a default
+        if (empty($images)) {
+            $default_image_id = (int) get_option('ssfi_default_image', 0);
+            if ($default_image_id > 0) {
+                $image_url = wp_get_attachment_url($default_image_id);
+                if ($image_url) {
+                    $images[] = array(
+                        'type'       => 'image',
+                        'from'       => 'default',
+                        'src'        => $image_url,
+                        'src_width'  => SSFI_FB_WIDTH,
+                        'src_height' => SSFI_FB_HEIGHT,
+                        'href'       => get_permalink($post_id),
+                    );
+                }
+            }
+        }
+        return $images;
     }
 }
 
