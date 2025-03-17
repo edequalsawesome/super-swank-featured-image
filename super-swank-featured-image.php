@@ -38,13 +38,6 @@ class Super_Swank_Featured_Image {
     private static ?self $instance = null;
 
     /**
-     * Default featured image ID.
-     *
-     * @var int
-     */
-    private int $default_image_id = 0;
-
-    /**
      * Get an instance of this class.
      *
      * @return self
@@ -60,14 +53,26 @@ class Super_Swank_Featured_Image {
      * Constructor.
      */
     private function __construct() {
+        // Only initialize if using a block theme
+        if ( ! wp_is_block_theme() ) {
+            add_action( 'admin_notices', array( $this, 'block_theme_requirement_notice' ) );
+            return;
+        }
+
         add_action( 'init', array( $this, 'load_textdomain' ) );
-        add_action( 'admin_init', array( $this, 'register_settings' ) );
-        add_action( 'admin_menu', array( $this, 'add_settings_page' ) );
-        add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ) );
+        add_action( 'init', array( $this, 'register_settings' ) );
         add_filter( 'get_post_thumbnail_id', array( $this, 'set_default_thumbnail' ), 10, 2 );
-        
-        // Add block editor support
-        add_action( 'init', array( $this, 'register_block_settings' ) );
+    }
+
+    /**
+     * Display notice if not using a block theme.
+     *
+     * @return void
+     */
+    public function block_theme_requirement_notice(): void {
+        $class = 'notice notice-error';
+        $message = __( 'Super-Swank Featured Image requires a block theme to function. Please activate a block theme or use a different featured image plugin.', 'super-swank-featured-image' );
+        printf( '<div class="%1$s"><p>%2$s</p></div>', esc_attr( $class ), esc_html( $message ) );
     }
 
     /**
@@ -89,40 +94,6 @@ class Super_Swank_Featured_Image {
      * @return void
      */
     public function register_settings(): void {
-        register_setting(
-            'ssfi_options',
-            'ssfi_default_image',
-            array(
-                'type'              => 'integer',
-                'description'       => __( 'Default featured image ID', 'super-swank-featured-image' ),
-                'sanitize_callback' => 'absint',
-                'show_in_rest'     => true,
-                'default'          => 0,
-            )
-        );
-
-        register_setting(
-            'ssfi_options',
-            'ssfi_default_image_crop',
-            array(
-                'type'              => 'object',
-                'description'       => __( 'Default featured image crop settings', 'super-swank-featured-image' ),
-                'show_in_rest'     => true,
-                'default'          => array(),
-            )
-        );
-    }
-
-    /**
-     * Register block editor settings.
-     *
-     * @return void
-     */
-    public function register_block_settings(): void {
-        if ( ! wp_is_block_theme() ) {
-            return;
-        }
-
         // Register the setting
         register_setting(
             'theme',
@@ -137,7 +108,7 @@ class Super_Swank_Featured_Image {
         );
 
         // Add settings to theme.json
-        add_filter('wp_theme_json_data_theme', function($theme_json) {
+        add_filter('wp_theme_json_data_default', function($theme_json) {
             $new_data = array(
                 'version'  => 2,
                 'settings' => array(
@@ -151,33 +122,34 @@ class Super_Swank_Featured_Image {
             return $theme_json->update_with($new_data);
         });
 
-        // Add the settings to the Site Editor
+        // Enqueue block editor assets
         add_action('enqueue_block_editor_assets', function() {
-            if ( ! wp_is_block_theme() || ! function_exists( 'get_current_screen' ) ) {
-                return;
-            }
-
-            $screen = get_current_screen();
-            if ( ! $screen || ! $screen->is_block_editor() ) {
-                return;
-            }
-
+            $asset_file = include(SSFI_PLUGIN_DIR . 'build/block-editor/index.asset.php');
+            
             wp_enqueue_script(
                 'ssfi-block-editor',
-                SSFI_PLUGIN_URL . 'assets/js/block-editor.js',
-                array(
-                    'wp-blocks',
-                    'wp-i18n',
-                    'wp-element',
-                    'wp-components',
-                    'wp-data',
-                    'wp-plugins',
-                    'wp-edit-site',
-                    'wp-block-editor',
-                    'wp-media-utils'
+                SSFI_PLUGIN_URL . 'build/block-editor/index.js',
+                array_merge(
+                    $asset_file['dependencies'],
+                    array(
+                        'wp-blocks',
+                        'wp-i18n',
+                        'wp-element',
+                        'wp-components',
+                        'wp-data',
+                        'wp-plugins',
+                        'wp-edit-site',
+                        'wp-block-editor',
+                        'wp-media-utils'
+                    )
                 ),
-                SSFI_VERSION,
-                true
+                $asset_file['version']
+            );
+
+            wp_set_script_translations(
+                'ssfi-block-editor',
+                'super-swank-featured-image',
+                SSFI_PLUGIN_DIR . 'languages'
             );
 
             wp_localize_script(
@@ -188,90 +160,6 @@ class Super_Swank_Featured_Image {
                 )
             );
         });
-    }
-
-    /**
-     * Add settings page for classic themes.
-     *
-     * @return void
-     */
-    public function add_settings_page(): void {
-        if ( ! wp_is_block_theme() ) {
-            add_options_page(
-                __( 'Default Featured Image', 'super-swank-featured-image' ),
-                __( 'Default Featured Image', 'super-swank-featured-image' ),
-                'manage_options',
-                'ssfi-settings',
-                array( $this, 'render_settings_page' )
-            );
-        }
-    }
-
-    /**
-     * Enqueue admin scripts and styles.
-     *
-     * @param string $hook The current admin page.
-     * @return void
-     */
-    public function enqueue_admin_scripts( string $hook ): void {
-        // For block themes, enqueue the block editor script
-        if ( wp_is_block_theme() ) {
-            add_action('enqueue_block_editor_assets', function() {
-                wp_enqueue_script(
-                    'ssfi-block-editor',
-                    SSFI_PLUGIN_URL . 'assets/js/block-editor.js',
-                    array(
-                        'wp-blocks',
-                        'wp-i18n',
-                        'wp-element',
-                        'wp-components',
-                        'wp-data',
-                        'wp-plugins',
-                        'wp-edit-post',
-                        'wp-media-utils'
-                    ),
-                    SSFI_VERSION,
-                    true
-                );
-            });
-        }
-
-        // For classic themes, enqueue the admin scripts
-        if ( 'settings_page_ssfi-settings' !== $hook ) {
-            return;
-        }
-
-        wp_enqueue_media();
-        wp_enqueue_style( 'wp-jquery-ui-dialog' );
-        wp_enqueue_script( 'jquery-ui-dialog' );
-        
-        wp_enqueue_style(
-            'ssfi-admin-styles',
-            SSFI_PLUGIN_URL . 'assets/css/admin.css',
-            array(),
-            SSFI_VERSION
-        );
-
-        wp_enqueue_script(
-            'ssfi-admin-script',
-            SSFI_PLUGIN_URL . 'assets/js/admin.js',
-            array( 'jquery', 'jquery-ui-dialog', 'wp-i18n', 'media-editor' ),
-            SSFI_VERSION,
-            true
-        );
-
-        wp_localize_script(
-            'ssfi-admin-script',
-            'ssfiAdmin',
-            array(
-                'cropTitle' => __( 'Crop Default Featured Image', 'super-swank-featured-image' ),
-                'cropButton' => __( 'Crop Image', 'super-swank-featured-image' ),
-                'cancelButton' => __( 'Cancel', 'super-swank-featured-image' ),
-                'aspectRatio' => apply_filters( 'ssfi_crop_aspect_ratio', 16 / 9 ),
-                'minWidth' => apply_filters( 'ssfi_crop_min_width', 200 ),
-                'minHeight' => apply_filters( 'ssfi_crop_min_height', 200 ),
-            )
-        );
     }
 
     /**
@@ -289,103 +177,6 @@ class Super_Swank_Featured_Image {
             }
         }
         return $thumbnail_id;
-    }
-
-    /**
-     * Render the settings page for classic themes.
-     *
-     * @return void
-     */
-    public function render_settings_page(): void {
-        // Check user capabilities
-        if ( ! current_user_can( 'manage_options' ) ) {
-            return;
-        }
-
-        // Get the default image ID and crop settings
-        $default_image_id = (int) get_option( 'ssfi_default_image', 0 );
-        $crop_settings = get_option( 'ssfi_default_image_crop', array() );
-        $image_url = $default_image_id ? wp_get_attachment_image_url( $default_image_id, 'full' ) : '';
-        $thumbnail_url = $default_image_id ? wp_get_attachment_image_url( $default_image_id, 'thumbnail' ) : '';
-        
-        ?>
-        <div class="wrap ssfi-settings-wrap">
-            <h1><?php echo esc_html( get_admin_page_title() ); ?></h1>
-            <form action="options.php" method="post">
-                <?php
-                settings_fields( 'ssfi_options' );
-                do_settings_sections( 'ssfi-settings' );
-                ?>
-                <div class="ssfi-image-section">
-                    <h2><?php esc_html_e( 'Default Featured Image', 'super-swank-featured-image' ); ?></h2>
-                    <div class="ssfi-image-preview">
-                        <?php if ( $image_url ) : ?>
-                            <img src="<?php echo esc_url( $thumbnail_url ); ?>" 
-                                 alt="" 
-                                 class="ssfi-preview-image"
-                                 data-full-src="<?php echo esc_url( $image_url ); ?>">
-                        <?php else : ?>
-                            <div class="ssfi-no-image">
-                                <?php esc_html_e( 'No image selected', 'super-swank-featured-image' ); ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                    <input type="hidden" name="ssfi_default_image" id="ssfi_default_image" value="<?php echo esc_attr( $default_image_id ); ?>">
-                    <input type="hidden" name="ssfi_default_image_crop" id="ssfi_default_image_crop" value="<?php echo esc_attr( wp_json_encode( $crop_settings ) ); ?>">
-                    
-                    <div class="ssfi-image-actions">
-                        <button type="button" class="button button-primary" id="ssfi-select-image">
-                            <?php esc_html_e( 'Select Image', 'super-swank-featured-image' ); ?>
-                        </button>
-                        <?php if ( $image_url ) : ?>
-                            <button type="button" class="button" id="ssfi-crop-image">
-                                <?php esc_html_e( 'Crop Image', 'super-swank-featured-image' ); ?>
-                            </button>
-                            <button type="button" class="button" id="ssfi-remove-image">
-                                <?php esc_html_e( 'Remove Image', 'super-swank-featured-image' ); ?>
-                            </button>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <div class="ssfi-image-settings">
-                    <h2><?php esc_html_e( 'Image Settings', 'super-swank-featured-image' ); ?></h2>
-                    <table class="form-table" role="presentation">
-                        <tr>
-                            <th scope="row">
-                                <?php esc_html_e( 'Image Size', 'super-swank-featured-image' ); ?>
-                            </th>
-                            <td>
-                                <?php if ( $image_url ) : ?>
-                                    <?php
-                                    $image_data = wp_get_attachment_metadata( $default_image_id );
-                                    if ( $image_data ) {
-                                        printf(
-                                            /* translators: 1: Image width, 2: Image height */
-                                            esc_html__( 'Original: %1$d × %2$d pixels', 'super-swank-featured-image' ),
-                                            (int) $image_data['width'],
-                                            (int) $image_data['height']
-                                        );
-                                    }
-                                    ?>
-                                <?php else : ?>
-                                    <?php esc_html_e( 'No image selected', 'super-swank-featured-image' ); ?>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    </table>
-                </div>
-
-                <?php submit_button(); ?>
-            </form>
-        </div>
-
-        <div id="ssfi-crop-dialog" style="display:none;">
-            <div class="ssfi-crop-area">
-                <img src="" alt="" id="ssfi-crop-image-element">
-            </div>
-        </div>
-        <?php
     }
 }
 

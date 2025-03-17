@@ -1,19 +1,19 @@
 ( function( wp ) {
     const { __ } = wp.i18n;
-    const { MediaUpload, MediaUploadCheck } = wp.blockEditor;
-    const { Button, PanelRow, TextControl } = wp.components;
+    const { MediaUpload } = wp.blockEditor;
+    const { Button, PanelBody } = wp.components;
     const { useSelect, useDispatch } = wp.data;
     const { useState, useEffect } = wp.element;
     const { registerPlugin } = wp.plugins;
+    const { PluginSidebar } = wp.editSite;
 
-    const SuperSwankFeaturedImageSettings = () => {
+    const SuperSwankFeaturedImagePanel = () => {
         const [defaultImage, setDefaultImage] = useState(0);
         const [imageUrl, setImageUrl] = useState('');
 
         // Get the current default image ID from WordPress settings
         const currentDefaultImage = useSelect(select => {
-            const settings = select('core').getEntityRecord('root', 'site');
-            return settings?.ssfi_default_image || 0;
+            return select('core').getEntityRecord('root', 'site')?.ssfi_default_image || 0;
         }, []);
 
         // Update state when settings change
@@ -21,10 +21,11 @@
             if (currentDefaultImage !== defaultImage) {
                 setDefaultImage(currentDefaultImage);
                 if (currentDefaultImage) {
-                    // Fetch the image URL
                     wp.media.attachment(currentDefaultImage).fetch().then(() => {
                         setImageUrl(wp.media.attachment(currentDefaultImage).get('url'));
                     });
+                } else {
+                    setImageUrl('');
                 }
             }
         }, [currentDefaultImage]);
@@ -48,80 +49,69 @@
         };
 
         return (
-            <PanelRow>
-                <div className="ssfi-settings-content" style={{ width: '100%' }}>
-                    <TextControl
-                        label={__('Default Featured Image', 'super-swank-featured-image')}
-                        help={__('This image will be used when no featured image is set for a post or page.', 'super-swank-featured-image')}
-                    />
-                    <div style={{ marginTop: '1em' }}>
-                        <MediaUploadCheck>
-                            <MediaUpload
-                                onSelect={onSelectImage}
-                                allowedTypes={['image']}
-                                value={defaultImage}
-                                render={({ open }) => (
-                                    <div style={{ marginBottom: '1em' }}>
-                                        {defaultImage && imageUrl ? (
-                                            <div>
-                                                <img
-                                                    src={imageUrl}
-                                                    alt=""
-                                                    style={{
-                                                        maxWidth: '100%',
-                                                        marginBottom: '1em',
-                                                        display: 'block'
-                                                    }}
-                                                />
-                                                <div style={{ marginBottom: '1em' }}>
-                                                    <Button
-                                                        onClick={open}
-                                                        variant="secondary"
-                                                        style={{ marginRight: '0.5em' }}
-                                                    >
-                                                        {__('Replace Image', 'super-swank-featured-image')}
-                                                    </Button>
-                                                    <Button
-                                                        onClick={removeImage}
-                                                        variant="secondary"
-                                                        isDestructive
-                                                    >
-                                                        {__('Remove Image', 'super-swank-featured-image')}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <Button
-                                                onClick={open}
-                                                variant="primary"
-                                                className="editor-post-featured-image__toggle"
-                                            >
-                                                {__('Select Default Image', 'super-swank-featured-image')}
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
+            <PanelBody
+                title={__('Default Featured Image', 'super-swank-featured-image')}
+                initialOpen={true}
+            >
+                <div className="ssfi-settings-panel">
+                    <div className="ssfi-image-preview">
+                        {imageUrl && (
+                            <img
+                                src={imageUrl}
+                                alt=""
+                                style={{
+                                    maxWidth: '100%',
+                                    marginBottom: '1em',
+                                    display: 'block'
+                                }}
                             />
-                        </MediaUploadCheck>
+                        )}
                     </div>
+                    <MediaUpload
+                        onSelect={onSelectImage}
+                        allowedTypes={['image']}
+                        value={defaultImage}
+                        render={({ open }) => (
+                            <div>
+                                <Button
+                                    onClick={open}
+                                    variant="secondary"
+                                    className="editor-post-featured-image__toggle"
+                                    style={{ width: '100%', marginBottom: defaultImage ? '0.5em' : 0 }}
+                                >
+                                    {defaultImage
+                                        ? __('Replace Image', 'super-swank-featured-image')
+                                        : __('Select Default Image', 'super-swank-featured-image')}
+                                </Button>
+                                {defaultImage > 0 && (
+                                    <Button
+                                        onClick={removeImage}
+                                        variant="secondary"
+                                        isDestructive
+                                        style={{ width: '100%' }}
+                                    >
+                                        {__('Remove Image', 'super-swank-featured-image')}
+                                    </Button>
+                                )}
+                            </div>
+                        )}
+                    />
                 </div>
-            </PanelRow>
+            </PanelBody>
         );
     };
 
-    if (wp.customize) {
-        wp.customize.sectionConstructor['super-swank-featured-image'] = wp.customize.Section.extend({
-            template: wp.template('super-swank-featured-image-section')
-        });
-    }
-
-    wp.domReady(() => {
-        const settings = document.querySelector('.edit-site-global-styles-sidebar');
-        if (settings) {
-            const section = document.createElement('div');
-            section.className = 'edit-site-global-styles-section super-swank-featured-image-section';
-            wp.element.render(<SuperSwankFeaturedImageSettings />, section);
-            settings.appendChild(section);
-        }
+    registerPlugin('ssfi-default-image', {
+        render: () => (
+            <PluginSidebar
+                name="ssfi-default-image-sidebar"
+                title={__('Default Featured Image', 'super-swank-featured-image')}
+                icon="format-image"
+            >
+                <SuperSwankFeaturedImagePanel />
+            </PluginSidebar>
+        ),
+        icon: 'format-image'
     });
+
 } )( window.wp ); 
