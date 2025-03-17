@@ -130,6 +130,29 @@ class Super_Swank_Featured_Image {
                 'default'          => 0,
             )
         );
+
+        // Register settings for block themes
+        if ( wp_is_block_theme() ) {
+            register_setting(
+                'theme',
+                'ssfi_default_image',
+                array(
+                    'type'              => 'integer',
+                    'description'       => __( 'Default featured image ID', 'super-swank-featured-image' ),
+                    'sanitize_callback' => 'absint',
+                    'show_in_rest'     => true,
+                    'default'          => 0,
+                )
+            );
+        }
+
+        // Add settings to theme.json
+        add_filter('block_editor_settings_all', function($settings) {
+            $settings['__experimentalFeatures']['custom']['ssfi'] = array(
+                'defaultImage' => get_option('ssfi_default_image', 0)
+            );
+            return $settings;
+        });
     }
 
     /**
@@ -156,6 +179,21 @@ class Super_Swank_Featured_Image {
      * @return void
      */
     public function enqueue_admin_scripts( string $hook ): void {
+        // For block themes, enqueue the block editor script
+        if ( wp_is_block_theme() && function_exists( 'get_current_screen' ) ) {
+            $screen = get_current_screen();
+            if ( $screen && $screen->is_block_editor() ) {
+                wp_enqueue_script(
+                    'ssfi-block-editor',
+                    SSFI_PLUGIN_URL . 'assets/js/block-editor.js',
+                    array( 'wp-blocks', 'wp-i18n', 'wp-element', 'wp-editor', 'wp-components', 'wp-data', 'wp-plugins', 'wp-edit-site' ),
+                    SSFI_VERSION,
+                    true
+                );
+            }
+        }
+
+        // For classic themes, enqueue the admin scripts
         if ( 'settings_page_ssfi-settings' !== $hook ) {
             return;
         }
