@@ -77,15 +77,10 @@ class Super_Swank_Featured_Image {
         add_action( 'wp_head', array( $this, 'add_social_meta_tags' ), 5 );
         
         // SEO Plugin compatibility
-        add_filter( 'wpseo_opengraph_image', array( $this, 'maybe_set_social_image' ) ); // Yoast SEO compatibility
-        add_filter( 'wpseo_twitter_image', array( $this, 'maybe_set_social_image' ) ); // Yoast SEO compatibility
-        add_filter( 'rank_math/opengraph/image', array( $this, 'maybe_set_social_image' ) ); // Rank Math SEO compatibility
-        add_filter( 'rank_math/twitter/image', array( $this, 'maybe_set_social_image' ) ); // Rank Math SEO compatibility
-        
-        // Jetpack compatibility
-        add_filter( 'jetpack_open_graph_image_default', array( $this, 'maybe_set_jetpack_default_image' ) );
-        add_filter( 'jetpack_images_get_images', array( $this, 'maybe_add_default_to_jetpack_images' ), 10, 3 );
-        add_filter( 'jetpack_sharing_twitter_image', array( $this, 'maybe_set_social_image' ) );
+        add_filter( 'wpseo_opengraph_image', array( $this, 'maybe_set_social_image' ) );
+        add_filter( 'wpseo_twitter_image', array( $this, 'maybe_set_social_image' ) );
+        add_filter( 'rank_math/opengraph/image', array( $this, 'maybe_set_social_image' ) );
+        add_filter( 'rank_math/twitter/image', array( $this, 'maybe_set_social_image' ) );
 
         // Add image editing support
         add_filter( 'admin_post_thumbnail_html', array( $this, 'add_image_editing_button' ), 10, 3 );
@@ -343,8 +338,8 @@ class Super_Swank_Featured_Image {
      * @return void
      */
     public function add_social_meta_tags(): void {
-        // Don't add tags if a SEO plugin or Jetpack's OpenGraph is active
-        if (defined('WPSEO_VERSION') || defined('RANK_MATH_VERSION') || class_exists('Jetpack') && Jetpack::is_module_active('publicize')) {
+        // Don't add tags if a SEO plugin is active
+        if (defined('WPSEO_VERSION') || defined('RANK_MATH_VERSION')) {
             return;
         }
 
@@ -374,57 +369,16 @@ class Super_Swank_Featured_Image {
      * Filter callback for SEO plugins to set social image.
      *
      * @param string $image_url The current image URL.
-     * @param string $platform The platform requesting the image ('facebook', 'twitter', etc.).
      * @return string The filtered image URL.
      */
-    public function maybe_set_social_image(string $image_url, string $platform = 'facebook'): string {
+    public function maybe_set_social_image(string $image_url): string {
         if (empty($image_url)) {
-            $new_image_url = $this->get_social_image_url($platform);
+            $new_image_url = $this->get_social_image_url('facebook');
             if ($new_image_url) {
                 return $new_image_url;
             }
         }
         return $image_url;
-    }
-
-    /**
-     * Set default image for Jetpack's OpenGraph implementation.
-     *
-     * @param string $image_url The default image URL.
-     * @return string The filtered image URL.
-     */
-    public function maybe_set_jetpack_default_image(string $image_url): string {
-        $new_image_url = $this->get_social_image_url('facebook');
-        return $new_image_url ?: $image_url;
-    }
-
-    /**
-     * Add default image to Jetpack's image detection results.
-     *
-     * @param array $images Array of images found by Jetpack.
-     * @param int $post_id Post ID.
-     * @param array $args Array of arguments.
-     * @return array Modified array of images.
-     */
-    public function maybe_add_default_to_jetpack_images(array $images, int $post_id, array $args): array {
-        // If no images were found and we have a default
-        if (empty($images)) {
-            $default_image_id = (int) get_option('ssfi_default_image', 0);
-            if ($default_image_id > 0) {
-                $image_url = wp_get_attachment_url($default_image_id);
-                if ($image_url) {
-                    $images[] = array(
-                        'type'       => 'image',
-                        'from'       => 'default',
-                        'src'        => $image_url,
-                        'src_width'  => SSFI_FB_WIDTH,
-                        'src_height' => SSFI_FB_HEIGHT,
-                        'href'       => get_permalink($post_id),
-                    );
-                }
-            }
-        }
-        return $images;
     }
 }
 
