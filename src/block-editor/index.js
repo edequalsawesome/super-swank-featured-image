@@ -79,7 +79,10 @@ const SuperSwankFeaturedImagePanel = () => {
                                 style={{ 
                                     width: '100%', 
                                     marginBottom: defaultImage ? '0.5em' : 0,
-                                    textAlign: 'center'
+                                    display: 'flex',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    minHeight: '40px'
                                 }}
                             >
                                 {defaultImage
@@ -91,7 +94,14 @@ const SuperSwankFeaturedImagePanel = () => {
                                     onClick={removeImage}
                                     variant="secondary"
                                     isDestructive
-                                    style={{ width: '100%' }}
+                                    style={{ 
+                                        width: '100%', 
+                                        marginBottom: defaultImage ? '0.5em' : 0,
+                                        display: 'flex',
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                        minHeight: '40px'
+                                     }}
                                 >
                                     {__('Remove Image', 'super-swank-featured-image')}
                                 </Button>
